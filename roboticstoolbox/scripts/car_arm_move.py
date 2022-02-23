@@ -79,11 +79,12 @@ def step_robot(r, Tep):
 
     eTep = np.linalg.inv(wTe) @ Tep
     # Spatial error
-    et = np.sum(np.abs(eTep[:3, -1]))
+    coeff = np.array([1,1,1])
+    et = np.sum(np.abs(eTep[:3, -1]) * coeff)
     print('空间误差： ', et)
 
     # Gain term (lambda) for control minimisation
-    Y = 0.01
+    Y = 0.15
 
     # Quadratic component of objective function
     Q = np.eye(r.n + 6)
@@ -92,10 +93,14 @@ def step_robot(r, Tep):
     Q[: r.n, : r.n] *= Y
     Q[:2, :2] *= 1.0 / et
 
+    # 调节Q和1/et的值，可以让规划器倾向，Q增大，则规划器因为倾向于底盘原因，考虑机械臂末端较少
+    # 所以转弯幅度小（因为底盘根据末端方向估计转弯角度）
+    print('Q: ', Y, '  |  ', 1/et)
+
     # Slack component of Q
     Q[r.n:, r.n:] = (1.0 / et) * np.eye(6)
 
-    print(wTe, Tep)
+    print(wTe, '\n', Tep)
 
     v, _ = rtb.p_servo(wTe, Tep, 1.5)
     print("v: ", v)
@@ -122,6 +127,9 @@ def step_robot(r, Tep):
     # Form the joint limit velocity damper
     Ain[: r.n, : r.n], bin[: r.n] = r.joint_velocity_damper(ps, pi, r.n)
 
+    # print('Ain: ', Ain)
+    # print('Bin: ', bin)
+
     # Linear component of objective function: the manipulability Jacobian
     # print(r.links[3], r.links[9])
 
@@ -130,7 +138,7 @@ def step_robot(r, Tep):
     )
 
     # Get base to face end-effector
-    kε = 0.5
+    kε = 1
     bTe = r.fkine(r.q, end='kinova_end_effector_link', include_base=False, fast=True)
     θε = math.atan2(bTe[1, -1], bTe[0, -1])
     ε = kε * θε
@@ -183,9 +191,9 @@ def main():
     ax_start.base = start_
     wTep = mr_k.fkine(mr_k.q, end='kinova_end_effector_link') * sm.SE3.Rz(np.pi)
     wTep.A[:3, :3] = np.array([0, 1, 0, 1, 0, 0, 0, 0, -1]).reshape((3,3))
-    wTep.A[0, -1] -= 2.0
-    wTep.A[1, -1] += 2.0
-    wTep.A[2, -1] -= 0.2
+    wTep.A[0, -1] -= 1.0
+    wTep.A[1, -1] += 1.0
+    wTep.A[2, -1] -= 0.35
     ax_goal.base = copy.copy(wTep)
     env.step()
 
