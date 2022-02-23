@@ -61,19 +61,19 @@
         <parent link="base_link"/>
         <child link="base_link1"/>
         <axis xyz="0 0 1"/>
-        <limit effort="87" lower="-999999" upper="999999" velocity="4.0"/>
+        <limit effort="87" lower="-999999" upper="999999" velocity="1.6"/>
     </joint>
     <joint name="base_joint2"  type="prismatic">
         <origin rpy="0 0 0" xyz="0 0 0"/>
         <parent link="base_link1"/>
         <child link="mount_link"/>
         <axis xyz="1 0 0"/>
-        <limit effort="87" lower="-999999" upper="999999" velocity="4.0"/>
+        <limit effort="87" lower="-999999" upper="999999" velocity="1.6"/>
     </joint>
     <joint name="mount_joint" type="fixed">
       <origin
         xyz="0.0 0.0 0.250"
-        rpy="0.0 0.0 0.0"/>
+        rpy="0.0 0.0 3.1416"/>
       <parent link="mount_link"/>
       <child link="kinova_base_link"/>
     </joint>

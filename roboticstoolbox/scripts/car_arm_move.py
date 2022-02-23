@@ -1,6 +1,6 @@
 import sys
 import time
-
+import copy
 import swift
 import roboticstoolbox as rtb
 import spatialgeometry as sg
@@ -26,7 +26,7 @@ class mr500_kinova(ERobot):
             links,
             name=name,
             manufacturer="mine",
-            gripper_links=links[10],
+            gripper_links=links[12],
             urdf_string=urdf_string,
             urdf_filepath=urdf_filepath,
         )
@@ -52,7 +52,7 @@ class mr500_kinova(ERobot):
         # self.grippers[0].tool = SE3(0, 0, 0.1034)
 
         self.addconfiguration("qz", np.array([0, 0, 0, 0, 0, 0, 0, 0,]))
-        self.addconfiguration("qr", np.array([0, 0, np.pi, -0.3, 1.6, 0, 1.25, -np.pi / 2]))
+        self.addconfiguration("qr", np.array([0, 0, 0, -0.3, 1.6, 0, 1.25, -np.pi / 2]))
 
         for i in range(self.n):
             if np.any(self.qlim[:, i] != 0) and not np.any(np.isnan(self.qlim[:, i])):
@@ -95,8 +95,12 @@ def step_robot(r, Tep):
     # Slack component of Q
     Q[r.n:, r.n:] = (1.0 / et) * np.eye(6)
 
-    v, _ = rtb.p_servo(wTe, Tep, 1.0)
+    print(wTe, Tep)
 
+    v, _ = rtb.p_servo(wTe, Tep, 1.5)
+    print("v: ", v)
+    # v[3:6] *= 0.8
+    # v[6:] *= 1.2
     v[3:] *= 1.3
 
     # The equality contraints
@@ -126,7 +130,7 @@ def step_robot(r, Tep):
     )
 
     # Get base to face end-effector
-    kε = 0.7
+    kε = 0.5
     bTe = r.fkine(r.q, end='kinova_end_effector_link', include_base=False, fast=True)
     θε = math.atan2(bTe[1, -1], bTe[0, -1])
     ε = kε * θε
@@ -136,6 +140,7 @@ def step_robot(r, Tep):
     lb = -np.r_[r.qdlim[: r.n], 10 * np.ones(6)]
     ub = np.r_[r.qdlim[: r.n], 10 * np.ones(6)]
 
+    print('c: ', c)
     # Solve for the joint velocities dq
     qd = qp.solve_qp(Q, c, Ain, bin, Aeq, beq, lb=lb, ub=ub)
     qd = qd[: r.n]
@@ -159,37 +164,53 @@ def main():
     env = swift.Swift()
     env.launch(realtime=True)
 
-    ax_goal = sg.Axes(0.1)
+    ax_goal = sg.Axes(0.5)
     env.add(ax_goal)
+    ax_start = sg.Axes(0.5)
+    env.add(ax_start)
+    ax_base = sg.Axes(0.5)
+    env.add(ax_base)
 
     mr_k = mr500_kinova()
     mr_k.q = mr_k.qr
 
     env.add(mr_k)
     # Behind
-    env.set_camera_pose([-2, 3, 0.7], [-2, 0.0, 0.5])
+    env.set_camera_pose([-0, 2, 1.7], [-1, 0.0, 0.5])
+    base_ = mr_k.fkine(mr_k.q, end=mr_k.links[2]) * sm.SE3.Rz(np.pi)
+    ax_base.base = base_
+    start_ = mr_k.fkine(mr_k.q) * sm.SE3.Rz(np.pi)
+    ax_start.base = start_
     wTep = mr_k.fkine(mr_k.q, end='kinova_end_effector_link') * sm.SE3.Rz(np.pi)
-    print(mr_k.fkine(mr_k.q, end='kinova_end_effector_link'))
     wTep.A[:3, :3] = np.array([0, 1, 0, 1, 0, 0, 0, 0, -1]).reshape((3,3))
-
-    wTep.A[0, -1] -= 4.0
-    wTep.A[2, -1] -= 0.25
-    ax_goal.base = wTep
+    wTep.A[0, -1] -= 2.0
+    wTep.A[1, -1] += 2.0
+    wTep.A[2, -1] -= 0.2
+    ax_goal.base = copy.copy(wTep)
     env.step()
+
 
     arrived = False
     dt = 0.025
 
+    cnt = 0
     while not arrived:
+        cnt += 1
         arrived, mr_k.qd = step_robot(mr_k, wTep.A)
+
+        # update
+        base_ = mr_k.fkine(mr_k.q, end=mr_k.links[2]) * sm.SE3.Rz(np.pi)
+        ax_base.base = base_
+
+
         env.step(dt)
 
-        print(mr_k.links[2])
         base_new = mr_k.fkine(mr_k._q, end=mr_k.links[2], fast=True)
         mr_k._base.A[:] = base_new
 
-        print(base_new)
         mr_k.q[:2] = 0
+        # if cnt == 20:
+        #     env.hold()
 
     env.hold()
 
