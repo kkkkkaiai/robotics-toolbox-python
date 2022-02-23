@@ -52,7 +52,7 @@ class mr500_kinova(ERobot):
         # self.grippers[0].tool = SE3(0, 0, 0.1034)
 
         self.addconfiguration("qz", np.array([0, 0, 0, 0, 0, 0, 0, 0,]))
-        self.addconfiguration("qr", np.array([0, 0, np.pi, -0.3, 1.6, 0, 1.0, -np.pi / 2]))
+        self.addconfiguration("qr", np.array([0, 0, np.pi, -0.3, 1.6, 0, 1.25, -np.pi / 2]))
 
         for i in range(self.n):
             if np.any(self.qlim[:, i] != 0) and not np.any(np.isnan(self.qlim[:, i])):
@@ -75,7 +75,7 @@ def init_files():
 
 
 def step_robot(r, Tep):
-    wTe = r.fkine(r.q, fast=True)
+    wTe = r.fkine(r.q, end='kinova_end_effector_link', fast=True)
 
     eTep = np.linalg.inv(wTe) @ Tep
     # Spatial error
@@ -95,12 +95,12 @@ def step_robot(r, Tep):
     # Slack component of Q
     Q[r.n:, r.n:] = (1.0 / et) * np.eye(6)
 
-    v, _ = rtb.p_servo(wTe, Tep, 1.5)
+    v, _ = rtb.p_servo(wTe, Tep, 1.0)
 
     v[3:] *= 1.3
 
     # The equality contraints
-    Aeq = np.c_[r.jacobe(r.q, fast=True), np.eye(6)]
+    Aeq = np.c_[r.jacobe(r.q, end='kinova_end_effector_link', fast=True), np.eye(6)]
     beq = v.reshape((6,))
 
     # The inequality constraints for joint limit avoidance
@@ -122,14 +122,13 @@ def step_robot(r, Tep):
     # print(r.links[3], r.links[9])
 
     c = np.concatenate(
-        (np.zeros(2), -r.jacobm(start=r.links[4]).reshape((r.n - 2)), np.zeros(6))
+        (np.zeros(2), -r.jacobm(start=r.links[4], end='kinova_end_effector_link').reshape((r.n - 2)), np.zeros(6))
     )
 
     # Get base to face end-effector
-    kε = 0.5
-    bTe = r.fkine(r.q, include_base=False, fast=True)
+    kε = 0.7
+    bTe = r.fkine(r.q, end='kinova_end_effector_link', include_base=False, fast=True)
     θε = math.atan2(bTe[1, -1], bTe[0, -1])
-    print(θε)
     ε = kε * θε
     c[0] = -ε
 
@@ -148,7 +147,7 @@ def step_robot(r, Tep):
 
     print(qd)
 
-    if et < 0.05:
+    if et < 0.02:
         return True, qd
     else:
         return False, qd
@@ -169,8 +168,10 @@ def main():
     env.add(mr_k)
     # Behind
     env.set_camera_pose([-2, 3, 0.7], [-2, 0.0, 0.5])
-    wTep = mr_k.fkine(mr_k.q) * sm.SE3.Rz(np.pi)
-    wTep.A[:3, :3] = np.diag([1, -1, 1])
+    wTep = mr_k.fkine(mr_k.q, end='kinova_end_effector_link') * sm.SE3.Rz(np.pi)
+    print(mr_k.fkine(mr_k.q, end='kinova_end_effector_link'))
+    wTep.A[:3, :3] = np.array([0, 1, 0, 1, 0, 0, 0, 0, -1]).reshape((3,3))
+
     wTep.A[0, -1] -= 4.0
     wTep.A[2, -1] -= 0.25
     ax_goal.base = wTep
@@ -204,6 +205,7 @@ def calc():
 
     b = mr_k.fkine(mr_k.q, end='base_link')
     print(b)
+
 
     bto1 = mr_k.fkine(mr_k.q, end='base_link1')
     bto2 = mr_k.fkine(mr_k.q, end='base_link2')
